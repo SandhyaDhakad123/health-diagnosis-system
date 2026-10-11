@@ -25,7 +25,7 @@ async function sendAuthRequest(endpoint, userData, requestName) {
   } catch (error) {
     if (error instanceof TypeError) {
       throw new Error(
-        "Backend se connection nahi ho pa raha. API URL aur backend status check karo."
+        "Unable to connect to the server. Please check the API URL and backend status."
       );
     }
 

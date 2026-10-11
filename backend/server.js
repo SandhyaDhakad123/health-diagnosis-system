@@ -13,6 +13,7 @@ dotenv.config();
 
 const app = express();
 
+
 const allowedOrigins = [
   "http://localhost:5173",
   "https://health-diagnosis-system-five.vercel.app",
@@ -21,8 +22,11 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin(origin, callback) {
-    // Requests without an Origin header, such as health checks, are allowed.
-    if (!origin || allowedOrigins.includes(origin)) {
+    const isAllowedPreview =
+      typeof origin === "string" &&
+      /^https:\/\/health-diagnosis-system-[a-z0-9-]+-sandhyas-projects-[a-z0-9-]+\.vercel\.app$/.test(origin);
+
+    if (!origin || allowedOrigins.includes(origin) || isAllowedPreview) {
       return callback(null, true);
     }
 
@@ -34,6 +38,7 @@ const corsOptions = {
   credentials: true,
   optionsSuccessStatus: 204,
 };
+
 
 // CORS middleware must run before API routes.
 app.use(cors(corsOptions));
