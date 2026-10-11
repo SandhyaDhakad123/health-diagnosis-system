@@ -1,6 +1,6 @@
 flask
 flask-cors
-numpy
+numpy==2.2.6
 pandas
-scikit-learn
+scikit-learn==1.7.2
 gunicorn
