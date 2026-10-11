@@ -1,126 +1,117 @@
+
 import express from "express";
 import axios from "axios";
 
 const router = express.Router();
 
-// Connects to Python AI service
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL?.trim();
+
+function getAIServiceUrls() {
+  if (!AI_SERVICE_URL) {
+    throw new Error("AI_SERVICE_URL is missing in backend environment variables.");
+  }
+
+  const predictUrl = AI_SERVICE_URL.replace(/\/+$/, "");
+  const healthUrl = predictUrl.replace(/\/predict$/, "") + "/health";
+
+  return { predictUrl, healthUrl };
+}
+
+const symptomMapping = {
+  "Body ache": "body_aches",
+  Cough: "cough",
+  Fatigue: "fatigue",
+  Fever: "fever",
+  Headache: "headache",
+  "Shortness of breath": "shortness_of_breath",
+  "Sore throat": "sore_throat",
+};
+
 router.post("/", async (req, res) => {
   try {
-    const { healthData } = req.body;
+    const { healthData } = req.body ?? {};
 
-    if (!healthData || typeof healthData !== 'object') {
+    if (!healthData || typeof healthData !== "object" || Array.isArray(healthData)) {
       return res.status(400).json({
-        message: "Please provide health data as an object",
-        example: {
-          healthData: {
-            "Age": 25,
-            "Heart_Rate_bpm": 72,
-            "Body_Temperature_C": 37.0,
-            "Oxygen_Saturation_": 98,
-            "Gender_Male": 1,
-            "Systolic": 120,
-            "Diastolic": 80,
-            "Body ache": 0,
-            "Cough": 1,
-            "Fatigue": 1,
-            "Fever": 1,
-            "Headache": 0,
-            "Runny nose": 0,
-            "Shortness of breath": 0,
-            "Sore throat": 1
-          }
-        }
+        success: false,
+        message: "Please provide healthData as an object.",
       });
     }
 
-    console.log("🔍 Received health data:", healthData);
-
-    // Transform healthData into symptoms array format expected by the model
-    const symptoms = [];
-    const symptomMapping = {
-      'Body ache': 'body_aches',
-      'Cough': 'cough',
-      'Fatigue': 'fatigue',
-      'Fever': 'fever',
-      'Headache': 'headache',
-      'Runny nose': 'runny_nose',
-      'Shortness of breath': 'shortness_of_breath',
-      'Sore throat': 'sore_throat'
-    };
-
-    // Extract symptoms from healthData (where value is 1)
-    for (const [key, mappedSymptom] of Object.entries(symptomMapping)) {
-      if (healthData[key] === 1) {
-        symptoms.push(mappedSymptom);
-      }
-    }
-
-    console.log("🔄 Transformed symptoms:", symptoms);
+    const symptoms = Object.entries(symptomMapping)
+      .filter(([field]) => Number(healthData[field]) === 1)
+      .map(([, symptom]) => symptom);
 
     if (symptoms.length === 0) {
       return res.status(400).json({
-        message: "No symptoms detected in health data"
+        success: false,
+        message:
+          "Please select at least one symptom supported by the AI model.",
       });
     }
 
-    const response = await axios.post(process.env.AI_SERVICE_URL, {
-      symptoms,
-    }, {
-      timeout: 10000, // 10 second timeout
-      headers: {
-        'Content-Type': 'application/json'
+    const { predictUrl } = getAIServiceUrls();
+
+    const response = await axios.post(
+      predictUrl,
+      { symptoms },
+      {
+        timeout: 60000,
+        headers: {
+          "Content-Type": "application/json",
+        },
       }
-    });
+    );
 
-    console.log("✅ Model prediction successful");
-
-    // Forward the model response
-    res.json({
+    return res.status(200).json({
       success: true,
       data: response.data,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-
   } catch (error) {
-    console.error("❌ AI Prediction Error:", error.message);
+    console.error("AI prediction error:", error.message);
 
-    if (error.code === 'ECONNREFUSED') {
-      return res.status(503).json({
-        message: "AI model service is not available. Please make sure the model server is running on port 5000.",
-        error: "CONNECTION_REFUSED"
+    if (error.message.includes("AI_SERVICE_URL is missing")) {
+      return res.status(500).json({
+        success: false,
+        message: "AI_SERVICE_URL is not configured on the backend.",
       });
     }
 
     if (error.response) {
-      return res.status(error.response.status).json({
-        message: "AI model returned an error",
-        error: error.response.data
+      return res.status(502).json({
+        success: false,
+        message: "The AI model service returned an error.",
+        details: error.response.data,
       });
     }
 
-    res.status(500).json({
-      message: "AI Prediction Service Error",
-      error: error.message
+    return res.status(503).json({
+      success: false,
+      message:
+        "AI model service is unavailable or did not respond in time. Please try again.",
     });
   }
 });
 
-// Health check endpoint
 router.get("/health", async (req, res) => {
   try {
-    const response = await axios.get(`${process.env.AI_SERVICE_URL.replace('/predict', '/health')}`, {
-      timeout: 5000
+    const { healthUrl } = getAIServiceUrls();
+
+    const response = await axios.get(healthUrl, {
+      timeout: 30000,
     });
 
-    res.json({
+    return res.status(200).json({
       backend: "healthy",
-      model_service: response.data
+      model_service: response.data,
     });
   } catch (error) {
-    res.status(503).json({
+    console.error("AI health check error:", error.message);
+
+    return res.status(503).json({
       backend: "healthy",
       model_service: "unavailable",
-      error: error.message
     });
   }
 });

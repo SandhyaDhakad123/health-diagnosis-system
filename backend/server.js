@@ -1,9 +1,9 @@
+
 import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from "dotenv";
 
-// Import Routes
 import authRoutes from "./routes/auth.js";
 import googleAuthRoutes from "./routes/google.js";
 import predictRoutes from "./routes/predict.js";
@@ -14,55 +14,90 @@ dotenv.config();
 
 const app = express();
 
-// Middlewares
-app.use(cors({
- origin: [
-    "http://localhost:5173",
-    "https://healthcheck-ai-ten.vercel.app",
-    "https://healthchecka.netlify.app"
-  ], 
-  // React (Vite) frontend URL
-  credentials: true
-}));
-app.use(express.json());
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://health-diagnosis-system-five.vercel.app",
+  "https://healthcheck-ai-ten.vercel.app",
+  "https://healthchecka.netlify.app",
+];
 
-// Default Test Route
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Origin not allowed by CORS"));
+    },
+    credentials: true,
+  })
+);
+
+app.use(express.json({ limit: "1mb" }));
+
 app.get("/", (req, res) => {
-  res.status(200).json({ message: "HealthCheck AI Backend is running..." });
+  res.status(200).json({
+    success: true,
+    message: "HealthCheck AI Backend is running",
+  });
 });
-// console.log("MONGO_URI =", process.env.MONGO_URI);
 
-// Database Connection + Start Server
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "healthy",
+    database:
+      mongoose.connection.readyState === 1 ? "connected" : "disconnected",
+  });
+});
+
+app.use("/api/auth", authRoutes);
+app.use("/api/auth/google", googleAuthRoutes);
+app.use("/api/predict", predictRoutes);
+app.use("/api/doctors", doctorsRoutes);
+app.use("/api/history", historyRoutes);
+
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: `Route not found: ${req.method} ${req.originalUrl}`,
+  });
+});
+
+app.use((err, req, res, next) => {
+  console.error("Server error:", err.message);
+
+  if (err.message === "Origin not allowed by CORS") {
+    return res.status(403).json({
+      success: false,
+      message: "This frontend origin is not allowed by the backend.",
+    });
+  }
+
+  res.status(500).json({
+    success: false,
+    message: "Internal server error",
+  });
+});
+
 const startServer = async () => {
   try {
-    await mongoose.connect(process.env.MONGO_URI, {
-      // dbName: "healthcheck",
-      // useNewUrlParser: true,
-      // useUnifiedTopology: true,
-    });
+    if (!process.env.MONGO_URI) {
+      throw new Error("MONGO_URI is missing from environment variables");
+    }
 
-  //   mongoose.connect(process.env.MONGO_URI)
-  // .then(() => console.log("✅ MongoDB Connected Successfully"))
-  // .catch(err => console.log("❌ MongoDB Error:", err.message));
-
-
+    await mongoose.connect(process.env.MONGO_URI);
     console.log("MongoDB Connected");
 
     const PORT = process.env.PORT || 4000;
-    app.listen(PORT, () =>
-      console.log(`🚀 Server running on port ${PORT}`)
-    );
 
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on port ${PORT}`);
+    });
   } catch (error) {
-    console.error("❌ MongoDB Error:", error);
+    console.error("Server startup failed:", error.message);
+    process.exit(1);
   }
 };
-
-// Attach Routes After DB Connects
-app.use("/api/auth", authRoutes);            // email/password signup & login
-app.use("/api/auth/google", googleAuthRoutes); // google login
-app.use("/api/predict", predictRoutes);      // AI prediction
-app.use("/api/doctors", doctorsRoutes);      // doctors list API
-app.use("/api/history", historyRoutes);      // diagnosis history
 
 startServer();
