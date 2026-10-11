@@ -3,19 +3,30 @@ import numpy as np
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pandas as pd
+from pathlib import Path
+import sklearn
 
 app = Flask(__name__)
 CORS(app)
 
 # Load the trained model and label encoder
+from pathlib import Path
+import sklearn
+
+BASE_DIR = Path(__file__).resolve().parent
+
 try:
-    with open('my_model.pkl', 'rb') as model_file:
+    print("Scikit-learn version:", sklearn.__version__)
+    print("Model directory:", BASE_DIR)
+
+    with open(BASE_DIR / "my_model.pkl", "rb") as model_file:
         model = pickle.load(model_file)
-    
-    with open('label_encoder.pkl', 'rb') as encoder_file:
+
+    with open(BASE_DIR / "label_encoder.pkl", "rb") as encoder_file:
         label_encoder = pickle.load(encoder_file)
-    
+
     print("✅ Model and encoder loaded successfully!")
+
 except Exception as e:
     print(f"❌ Error loading model: {e}")
     model = None
